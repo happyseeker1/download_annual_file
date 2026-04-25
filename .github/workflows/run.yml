@@ -1,0 +1,29 @@
+name: Annual Report Fetcher
+
+on:
+  schedule:
+    # 年报通常集中在每年4月30日前发布，可设置在此期间高频运行
+    - cron: '0 20 * * *'   # 北京时间凌晨4点 (UTC 20:00) 每天运行一次
+  workflow_dispatch:      # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        pip install requests aligo
+
+    - name: Run main script
+      env:
+        # 从GitHub Secrets中读取敏感信息
+        ALIYUN_REFRESH_TOKEN: ${{ secrets.ALIYUN_REFRESH_TOKEN }}
+        ALIYUN_FOLDER_ID: ${{ secrets.ALIYUN_FOLDER_ID }}
+      run: python main.py
