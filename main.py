@@ -15,7 +15,7 @@ ALIYUN_FOLDER_ID = os.getenv("ALIYUN_FOLDER_ID")
 GITHUB_WORKSPACE = "/tmp"  # GitHub Actions 的临时运行空间
 
 # 选择需要查询的年份范围
-START_YEAR = 2006
+START_YEAR = 2024
 END_YEAR = 2026
 
 # 巨潮资讯网API
