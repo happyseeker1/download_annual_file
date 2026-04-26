@@ -3,6 +3,7 @@ import json
 import time
 import os
 import re
+import akshare as ak
 from datetime import datetime
 from aligo import Aligo
 
@@ -21,41 +22,31 @@ CNINFO_API = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
 PDF_BASE_URL = "http://static.cninfo.com.cn/"
 
 # ================= 模块一: 获取需要处理的股票代码 =================
+
 def get_stock_list():
     """
-    获取当前A股所有正常上市股票代码，已排除ST、*ST等异常股票。
-    数据源来自东方财富的实时行情API，免费稳定。
+    使用 akshare 获取 A 股正常上市股票代码，自动过滤 ST。
+    数据来源稳定，内置重试和异常处理。
     """
-    print("正在获取A股股票列表...")
-    url = "http://push2.eastmoney.com/api/qt/clist/get"
-    params = {
-        "pn": "1",
-        "pz": "10000",
-        "po": "1",
-        "np": "1",
-        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-        "fltt": "2",
-        "invt": "2",
-        "fid": "f3",
-        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23",
-        "fields": "f12,f14",  # 只获取代码和名称
-        "_": str(int(time.time() * 1000))
-    }
-    resp = requests.get(url, params=params, timeout=10)
-    data = resp.json()
-    
-    stocks = []
-    for item in data.get('data', {}).get('diff', []):
-        code = item.get('f12', '')
-        name = item.get('f14', '')
-        # 过滤掉ST和*ST股票
-        if 'ST' not in name and '*ST' not in name and 'st' not in name:
-            stocks.append((code, name))
-    print(f"成功获取 {len(stocks)} 只正常股票。")
-    return stocks
+    print("正在获取A股股票列表（使用 akshare）...")
+    try:
+        # 获取所有 A 股实时代码与名称
+        df = ak.stock_info_a_code_name()
+        stocks = []
+        for _, row in df.iterrows():
+            code = row['code']
+            name = row['name']
+            # 过滤 ST、*ST 等异常股票
+            if 'ST' not in name and '*ST' not in name:
+                stocks.append((code, name))
+        print(f"成功获取 {len(stocks)} 只正常股票。")
+        return stocks
+    except Exception as e:
+        print(f"akshare 获取股票列表失败: {e}")
+        return []   # 不终止程序，后续步骤会自然跳过
 
 # ================= 模块二: 爬取年报PDF链接并过滤异常 =================
-def get_annual_report_urls(stock_code, year):
+def get_annual_report_urls(stock_code, stock_name,year):
     """
     从巨潮资讯网爬取指定股票和年份的年报PDF直链，已内置异常过滤。
     返回PDF URL或None。
@@ -73,7 +64,7 @@ def get_annual_report_urls(stock_code, year):
         "column": "szse",
         "tabName": "fulltext",
         "plate": "sz;sh",
-        "stock": f"{stock_code}, {name}",
+        "stock": f"{stock_code}, {stock_name}",
         "searchkey": "",
         "secid": "",
         "category": "category_ndbg_szsh",  # 年报类别
@@ -154,7 +145,7 @@ def main():
                 continue
                 
             # 获取年报链接
-            pdf_url = get_annual_report_urls(stock_code, year)
+            pdf_url = get_annual_report_urls(stock_code,stock_name, year)
             if not pdf_url:
                 continue
                 
