@@ -1,30 +1,31 @@
-name: Annual Report Fetcher
+name: Annual Report Fetcher (Yearly Parallel)
 
 on:
-  schedule:
-    # 年报通常集中在每年4月30日前发布，可设置在此期间高频运行
-    - cron: '0 20 * * *'   # 北京时间凌晨4点 (UTC 20:00) 每天运行一次
-  workflow_dispatch:      # 允许手动触发
+  workflow_dispatch:       # 允许手动触发
 
 jobs:
-  build:
+  fetch_year:
     runs-on: ubuntu-latest
+    timeout-minutes: 360   # 单个任务最长6小时
+    strategy:
+      matrix:
+        year: [2024, 2025, 2026]   # 可按需增减，例如 [2025,2026]
+      fail-fast: false             # 某一年失败不影响其他年份
+
     steps:
-    - uses: actions/checkout@v4   # 原来是@v3
-    - uses: actions/setup-python@v5   # 原来是@v4
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-      
-    - name: Install dependencies
-      run: |
-        pip install requests aligo akshare beautifulsoup4
 
-    - name: Run main script
+    - name: Install dependencies
+      run: pip install requests aligo
+
+    - name: Run main script for year ${{ matrix.year }}
       env:
-        # 从GitHub Secrets中读取敏感信息
         ALIYUN_REFRESH_TOKEN: ${{ secrets.ALIYUN_REFRESH_TOKEN }}
         ALIYUN_FOLDER_ID: ${{ secrets.ALIYUN_FOLDER_ID }}
+        TARGET_YEAR: ${{ matrix.year }}
       run: python main.py
