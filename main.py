@@ -4,6 +4,7 @@ import time
 import os
 import re
 import akshare as ak
+import csv
 from datetime import datetime
 from aligo import Aligo
 
@@ -22,28 +23,21 @@ CNINFO_API = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
 PDF_BASE_URL = "http://static.cninfo.com.cn/"
 
 # ================= 模块一: 获取需要处理的股票代码 =================
-
 def get_stock_list():
-    """
-    使用 akshare 获取 A 股正常上市股票代码，自动过滤 ST。
-    数据来源稳定，内置重试和异常处理。
-    """
-    print("正在获取A股股票列表（使用 akshare）...")
+    print("正在从本地 stock_list.csv 读取股票列表...")
+    stocks = []
     try:
-        # 获取所有 A 股实时代码与名称
-        df = ak.stock_info_a_code_name()
-        stocks = []
-        for _, row in df.iterrows():
-            code = row['code']
-            name = row['name']
-            # 过滤 ST、*ST 等异常股票
-            if 'ST' not in name and '*ST' not in name:
-                stocks.append((code, name))
-        print(f"成功获取 {len(stocks)} 只正常股票。")
-        return stocks
-    except Exception as e:
-        print(f"akshare 获取股票列表失败: {e}")
-        return []   # 不终止程序，后续步骤会自然跳过
+        with open('stock_list.csv', 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                code = row['code'].strip()
+                name = row['name'].strip()
+                if 'ST' not in name and '*ST' not in name:  # 二次过滤（安全）
+                    stocks.append((code, name))
+        print(f"成功读取 {len(stocks)} 只正常股票。")
+    except FileNotFoundError:
+        print("错误：stock_list.csv 文件不存在，请确保文件已提交到仓库！")
+    return stocks
 
 # ================= 模块二: 爬取年报PDF链接并过滤异常 =================
 def get_annual_report_urls(stock_code, stock_name,year):
