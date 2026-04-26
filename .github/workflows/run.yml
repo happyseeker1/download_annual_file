@@ -20,7 +20,7 @@ jobs:
       
     - name: Install dependencies
       run: |
-        pip install requests aligo akshare
+        pip install requests aligo akshare beautifulsoup4
 
     - name: Run main script
       env:
