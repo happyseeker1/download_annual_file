@@ -46,7 +46,7 @@ def get_stock_list():
         return []   # 不终止程序，后续步骤会自然跳过
 
 # ================= 模块二: 爬取年报PDF链接并过滤异常 =================
-def get_annual_report_urls(stock_code, year):
+def get_annual_report_urls(stock_code, stock_name,year):
     """
     从巨潮资讯网爬取指定股票和年份的年报PDF直链，已内置异常过滤。
     返回PDF URL或None。
@@ -64,7 +64,7 @@ def get_annual_report_urls(stock_code, year):
         "column": "szse",
         "tabName": "fulltext",
         "plate": "sz;sh",
-        "stock": f"{stock_code}, {name}",
+        "stock": f"{stock_code}, {stock_name}",
         "searchkey": "",
         "secid": "",
         "category": "category_ndbg_szsh",  # 年报类别
@@ -145,7 +145,7 @@ def main():
                 continue
                 
             # 获取年报链接
-            pdf_url = get_annual_report_urls(stock_code, year)
+            pdf_url = get_annual_report_urls(stock_code,stock_name, year)
             if not pdf_url:
                 continue
                 
