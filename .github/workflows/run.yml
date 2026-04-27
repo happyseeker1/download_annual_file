@@ -21,7 +21,7 @@ jobs:
         python-version: '3.10'
 
     - name: Install dependencies
-      run: pip install requests aligo
+      run: pip install requests aligo beautifulsoup4
 
     - name: Run main script for year ${{ matrix.year }}
       env:
