@@ -1,16 +1,18 @@
 import os
 import csv
 import time
+import re
 import requests
+from bs4 import BeautifulSoup
 from aligo import Aligo
 import shutil
 import sys
 
-# ======================= 配置区 =========================
+# ======================= 配置 =======================
 GITHUB_WORKSPACE = "/tmp"
 PDF_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Referer": "https://data.eastmoney.com/",
+    "Referer": "http://vip.stock.finance.sina.com.cn/",
 }
 ALIYUN_REFRESH_TOKEN = os.getenv("ALIYUN_REFRESH_TOKEN")
 ALIYUN_FOLDER_ID = os.getenv("ALIYUN_FOLDER_ID")
@@ -22,7 +24,7 @@ if not TARGET_YEAR:
 TARGET_YEAR = int(TARGET_YEAR)
 print(f"📆 本次任务目标年份：{TARGET_YEAR}")
 
-# ======================= 股票列表读取 ======================
+# ======================= 股票列表 =======================
 def load_stocks_from_csv(filename="stock_list.csv"):
     stocks = []
     with open(filename, "r", encoding="utf-8-sig") as f:
@@ -30,62 +32,79 @@ def load_stocks_from_csv(filename="stock_list.csv"):
         for row in reader:
             code = row["code"].strip()
             name = row["name"].strip()
+            # 额外过滤 ST（保证万无一失）
             if "ST" not in name and "*ST" not in name:
                 stocks.append((code, name))
     return stocks
 
-# ================== 东方财富年报链接获取 ===================
-def get_annual_report_pdf_eastmoney(code, name, year):
+# ================== 新浪年报链接获取（支持分页） ==================
+def get_annual_report_pdf_sina(code, name, year, max_pages=2):
     """
-    通过东方财富公告接口获取年报 PDF 直链。
-    返回 (url, title) 或 None
+    从新浪财经公告页面获取指定股票、年份的第一个年度报告 PDF 链接。
+    max_pages：最多搜索的页数（默认2，年报通常在前两页）。
     """
-    url = "https://np-anotice-stock.eastmoney.com/api/security/ann"
+    base_url = f"http://vip.stock.finance.sina.com.cn/corp/go.php/vCB_AllBulletin/stockid/{code}.phtml"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Referer": "https://data.eastmoney.com/",
+        "Accept-Language": "zh-CN,zh;q=0.9",
     }
-    params = {
-        "sr": -1,
-        "page_size": 10,
-        "page_index": 1,
-        "ann_type": "A",
-        "client_source": "web",
-        "stock_list": code,
-        "f_node": "0",
-        "s_node": "0",
-        "begin_time": f"{year}-01-01",
-        "end_time": f"{year}-12-31",
-    }
-    try:
-        resp = requests.get(url, params=params, headers=headers, timeout=20)
-        data = resp.json()
-        if not data.get("data") or not data["data"].get("list"):
-            print(f"    📭 {year} 年无公告数据")
-            return None
+    # 过滤关键词（包括标题中可能出现的干扰项）
+    exclude_kw = ["摘要", "英文", "修订", "已取消", "更正", "补充"]
+    # 匹配“年度报告”，允许前后空格
+    year_report_pattern = re.compile(r"年度\s*报告")
 
-        for item in data["data"]["list"]:
-            title = item.get("title", "")
-            if "年度报告" not in title:
+    for page in range(1, max_pages + 1):
+        params = {"year": year, "type": "yearly", "page": page}
+        try:
+            resp = requests.get(base_url, params=params, headers=headers, timeout=20)
+            resp.encoding = "gbk"
+            soup = BeautifulSoup(resp.text, "html.parser")
+            table = soup.find("table", id="con02_table")
+            if not table:
                 continue
-            if any(kw in title for kw in ["摘要", "英文", "修订", "已取消", "更正"]):
-                continue
-            art_code = item.get("art_code", "")
-            if not art_code:
-                continue
-            pdf_url = f"https://np-anotice-stock.eastmoney.com/api/security/ann/file?type=pdf&art_code={art_code}"
-            print(f"    🔗 找到年报：{title}")
-            return pdf_url
-        print(f"    ℹ️ 未找到符合条件的年报")
-    except Exception as e:
-        print(f"    ⚠️ 请求异常：{e}")
+
+            rows = table.find_all("tr")[1:]  # 跳过表头
+            for row in rows:
+                cols = row.find_all("td")
+                if len(cols) < 3:
+                    continue
+                title_td = cols[1]
+                title = title_td.get_text(strip=True)
+
+                # 必须包含“年度报告”
+                if not year_report_pattern.search(title):
+                    continue
+                # 排除含干扰词
+                if any(kw in title for kw in exclude_kw):
+                    continue
+
+                # 获取附件单元格中的链接
+                attach_td = cols[2]
+                a_tag = attach_td.find("a")
+                if a_tag and a_tag.get("href"):
+                    href = a_tag["href"]
+                    # 处理相对链接
+                    if href.startswith("//"):
+                        pdf_url = "http:" + href
+                    elif href.startswith("/"):
+                        pdf_url = "http://vip.stock.finance.sina.com.cn" + href
+                    else:
+                        pdf_url = href
+                    # 确保是PDF文件
+                    if ".pdf" in pdf_url:
+                        print(f"    🔗 找到年报（第{page}页）：{title}")
+                        return pdf_url
+        except Exception as e:
+            print(f"    ⚠️ 新浪请求异常（第{page}页） [{code}-{year}]: {e}")
+            continue
+
     return None
 
-# ======================= PDF 下载 ==========================
+# ======================= PDF 下载 =======================
 def download_pdf(pdf_url, save_path):
     try:
         r = requests.get(pdf_url, headers=PDF_HEADERS, timeout=60)
-        if r.status_code == 200 and len(r.content) > 10 * 1024:   # 最少10KB
+        if r.status_code == 200 and len(r.content) > 10 * 1024:
             with open(save_path, "wb") as f:
                 f.write(r.content)
             return True
@@ -95,7 +114,7 @@ def download_pdf(pdf_url, save_path):
         print(f"    ❌ 下载异常：{e}")
     return False
 
-# ======================= 主流程 ============================
+# ======================= 主流程 =======================
 def main():
     # 1. 连接阿里云盘
     print("🔗 正在连接阿里云盘...")
@@ -118,17 +137,15 @@ def main():
     success_count = 0
     start_time = time.time()
 
-    # 3. 遍历每一只股票
+    # 3. 遍历每只股票
     for idx, (code, name) in enumerate(stocks, 1):
         print(f"\n[{idx}/{total}] 处理 {code} {name}")
-        # 创建本股票临时目录
         local_dir = os.path.join(GITHUB_WORKSPACE, f"{TARGET_YEAR}_{code}")
         os.makedirs(local_dir, exist_ok=True)
 
         # 获取 PDF 链接
-        pdf_url = get_annual_report_pdf_eastmoney(code, name, TARGET_YEAR)
+        pdf_url = get_annual_report_pdf_sina(code, name, TARGET_YEAR, max_pages=3)
         if not pdf_url:
-            # 无年报，跳过
             shutil.rmtree(local_dir, ignore_errors=True)
             continue
 
@@ -139,10 +156,9 @@ def main():
         if not download_pdf(pdf_url, pdf_path):
             shutil.rmtree(local_dir, ignore_errors=True)
             continue
-
         print(f"  ✅ 下载成功")
 
-        # 上传到云盘（在“上市公司年报/{code}/”下）
+        # 上传到云盘
         stock_folder = ali.get_folder_by_path(f"上市公司年报/{code}")
         if stock_folder is None:
             stock_folder = ali.create_folder(code, parent_file_id=target_folder.file_id)
@@ -155,7 +171,7 @@ def main():
         except Exception as e:
             print(f"  ⚠️ 上传失败：{e}")
 
-        # 清理本地暂存
+        # 清理本地临时文件
         shutil.rmtree(local_dir, ignore_errors=True)
         time.sleep(0.3)   # 礼貌等待
 
