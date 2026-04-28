@@ -1,17 +1,12 @@
-name: Annual Report Fetcher (Yearly Parallel)
+name: Download Annual Reports from CSV
 
 on:
-  workflow_dispatch:       # 仅手动触发
+  workflow_dispatch:
 
 jobs:
-  fetch_year:
+  download:
     runs-on: ubuntu-latest
-    timeout-minutes: 360   # 单个任务最长6小时
-    strategy:
-      matrix:
-        year: [2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025]
-      fail-fast: false     # 某一年失败不影响其他年份
-
+    timeout-minutes: 360
     steps:
     - uses: actions/checkout@v4
 
@@ -21,11 +16,10 @@ jobs:
         python-version: '3.10'
 
     - name: Install dependencies
-      run: pip install requests aligo beautifulsoup4
+      run: pip install requests aligo
 
-    - name: Run main script for year ${{ matrix.year }}
+    - name: Run download script
       env:
         ALIYUN_REFRESH_TOKEN: ${{ secrets.ALIYUN_REFRESH_TOKEN }}
         ALIYUN_FOLDER_ID: ${{ secrets.ALIYUN_FOLDER_ID }}
-        TARGET_YEAR: ${{ matrix.year }}
       run: python main.py
